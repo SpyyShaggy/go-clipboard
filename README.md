@@ -25,7 +25,7 @@
 
 ### 1. Клонирование репозитория
 ```bash
-git clone <URL_ВАШЕГО_РЕПОЗИТОРИЯ>
+git clone https://github.com/SpyyShaggy/go-clipboard.git
 cd go-clipboard
 ```
 
@@ -84,8 +84,8 @@ cp lanshare.service ~/.config/systemd/user/
 > After=network.target
 > 
 > [Service]
-> ExecStart=/полный/путь/к/папке/go-clipboard/lanshare
-> WorkingDirectory=/полный/путь/к/папке/go-clipboard
+> ExecStart=/mnt/game/fck/vs-code-projects/another-projects/go-clipboard/lanshare
+> WorkingDirectory=/mnt/game/fck/vs-code-projects/another-projects/go-clipboard
 > Restart=always
 > RestartSec=3
 > 
