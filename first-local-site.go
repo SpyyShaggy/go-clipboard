@@ -17,7 +17,9 @@ import (
 const (
 	Port     = ":8000"
 	ShareDir = "/mnt/game/site"
+	FileTTL  = 1 * time.Hour
 )
+
 
 type FileItem struct {
 	Name string `json:"name"`
@@ -240,11 +242,49 @@ func localIPs() []string {
 	return ips
 }
 
+func startAutoCleaner() {
+	cleanOnce := func() {
+		entries, err := os.ReadDir(ShareDir)
+		if err != nil {
+			return
+		}
+		now := time.Now()
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			if now.Sub(info.ModTime()) >= FileTTL {
+				target := filepath.Join(ShareDir, e.Name())
+				if err := os.Remove(target); err == nil {
+					fmt.Printf("[AutoClean] Перманентно удален файл (>1ч): %s\n", e.Name())
+				}
+			}
+		}
+	}
+
+	go func() {
+		cleanOnce()
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			cleanOnce()
+		}
+	}()
+}
+
+
 func main() {
 	if err := os.MkdirAll(ShareDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Ошибка создания директории %s: %v\n", ShareDir, err)
 		os.Exit(1)
 	}
+
+	startAutoCleaner()
+
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -315,7 +355,7 @@ textarea:focus { border-color: var(--accent); }
 <main>
   <header>
     <h1>Быстрый обмен</h1>
-    <span class="path">/mnt/game/site</span>
+    <span class="path">/mnt/game/site · автоудаление через 1ч</span>
   </header>
 
   <div class="grid">
