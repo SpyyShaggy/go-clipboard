@@ -1,0 +1,14 @@
+# Binaries and builds
+lanshare
+*.exe
+*.test
+
+# OS & IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Temporary upload files
+.upload-*

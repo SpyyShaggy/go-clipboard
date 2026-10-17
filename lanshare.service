@@ -1,0 +1,12 @@
+[Unit]
+Description=LAN File Share Hub
+After=network.target
+
+[Service]
+ExecStart=/mnt/game/fck/vs-code-projects/another-projects/go-clipboard/lanshare
+WorkingDirectory=/mnt/game/fck/vs-code-projects/another-projects/go-clipboard
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
