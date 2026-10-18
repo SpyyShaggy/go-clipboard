@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -14,11 +15,32 @@ import (
 	"time"
 )
 
-const (
+var (
+	portFlag = flag.String("port", ":8000", "Порт сервера (например, :8000)")
+	dirFlag  = flag.String("dir", "", "Папка для файлов (по умолчанию $SHARE_DIR или автоопределение)")
+	ttlFlag  = flag.Duration("ttl", 1*time.Hour, "Время жизни файлов до автоудаления")
+
 	Port     = ":8000"
 	ShareDir = "/mnt/game/site"
 	FileTTL  = 1 * time.Hour
 )
+
+func resolveShareDir(custom string) string {
+	if custom != "" {
+		return custom
+	}
+	if env := os.Getenv("SHARE_DIR"); env != "" {
+		return env
+	}
+	if fi, err := os.Stat("/mnt/game/site"); err == nil && fi.IsDir() {
+		return "/mnt/game/site"
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, "Downloads", "lan-share")
+	}
+	return "./uploads"
+}
+
 
 
 type FileItem struct {
@@ -278,6 +300,11 @@ func startAutoCleaner() {
 
 
 func main() {
+	flag.Parse()
+	Port = *portFlag
+	ShareDir = resolveShareDir(*dirFlag)
+	FileTTL = *ttlFlag
+
 	if err := os.MkdirAll(ShareDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Ошибка создания директории %s: %v\n", ShareDir, err)
 		os.Exit(1)
@@ -285,21 +312,21 @@ func main() {
 
 	startAutoCleaner()
 
-
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(pageHTML))
+		html := strings.ReplaceAll(pageHTML, "{{SHARE_DIR}}", ShareDir)
+		w.Write([]byte(html))
 	})
 	http.HandleFunc("/api/files", handleFiles)
 	http.HandleFunc("/api/upload/", handleUpload)
 	http.HandleFunc("/api/text", handleText)
 	http.HandleFunc("/download/", handleDownload)
 
-	fmt.Printf("Сервер запущен. Папка: %s\nОткройте в браузере:\n", ShareDir)
+	fmt.Printf("Сервер запущен. Порт: %s\nПапка: %s (TTL: %v)\nОткройте в браузере:\n", Port, ShareDir, FileTTL)
 	for _, ip := range localIPs() {
 		fmt.Printf("  http://%s%s/\n", ip, Port)
 	}
@@ -314,7 +341,7 @@ const pageHTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LAN Drop — /mnt/game/site</title>
+<title>LAN Drop — {{SHARE_DIR}}</title>
 <style>
 :root { --bg: #0b0f19; --card: #131b2e; --border: #23304d; --accent: #3b82f6; --accent-hover: #2563eb; --text: #f1f5f9; --muted: #94a3b8; --success: #10b981; --danger: #ef4444; }
 * { box-sizing: border-box; }
@@ -322,16 +349,18 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 syst
 main { max-width: 860px; margin: 28px auto; padding: 0 16px; }
 header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 20px; gap: 8px; }
 h1 { font-size: 26px; margin: 0; font-weight: 700; letter-spacing: -0.5px; }
-.path { font-family: monospace; background: #1e293b; color: #38bdf8; padding: 4px 10px; border-radius: 8px; font-size: 13px; }
+.path { font-family: monospace; background: #1e293b; color: #38bdf8; padding: 4px 10px; border-radius: 8px; font-size: 13px; word-break: break-all; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 @media(max-width: 680px) { .grid { grid-template-columns: 1fr; } }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
 h2 { font-size: 17px; margin: 0 0 12px; font-weight: 600; }
-.dropzone { border: 2px dashed #334155; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 155px; }
+.dropzone { border: 2px dashed #334155; border-radius: 12px; padding: 24px 16px; text-align: center; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 155px; }
 .dropzone.dragover, .dropzone:hover { border-color: var(--accent); background: rgba(59,130,246,0.06); }
-.dropzone input { display: none; }
 .drop-title { font-weight: 600; color: var(--accent); margin-bottom: 4px; font-size: 16px; }
 .muted { color: var(--muted); font-size: 13px; }
+.picker-btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
+.btn-picker { background: #1e293b; color: var(--text); border: 1px solid var(--border); padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.15s; user-select: none; }
+.btn-picker:hover { background: var(--accent); color: white; border-color: var(--accent); }
 textarea { width: 100%; height: 104px; background: #0f1626; color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font: inherit; resize: none; outline: none; }
 textarea:focus { border-color: var(--accent); }
 .btn { background: var(--accent); color: white; border: 0; border-radius: 10px; padding: 10px 18px; font: 600 14px system-ui; cursor: pointer; transition: 0.15s; margin-top: 10px; display: inline-flex; align-items: center; gap: 8px; }
@@ -355,17 +384,22 @@ textarea:focus { border-color: var(--accent); }
 <main>
   <header>
     <h1>Быстрый обмен</h1>
-    <span class="path">/mnt/game/site · автоудаление через 1ч</span>
+    <span class="path">{{SHARE_DIR}} · автоудаление через 1ч</span>
   </header>
 
   <div class="grid">
     <section class="card">
-      <h2>Отправить файлы, фото, видео</h2>
-      <label class="dropzone" id="dropzone">
-        <span class="drop-title">Нажмите или перетащите файлы</span>
-        <span class="muted">Прямая потоковая запись без лимита размера</span>
-        <input id="picker" type="file" multiple>
-      </label>
+      <h2>Отправить файлы или папки</h2>
+      <div class="dropzone" id="dropzone">
+        <span class="drop-title">Перетащите файлы или папки сюда</span>
+        <span class="muted">Папки автоматически пакуются в .zip · Потоковая загрузка</span>
+        <div class="picker-btns">
+          <label class="btn-picker" for="picker">Выбрать файлы</label>
+          <label class="btn-picker" for="folderPicker">Выбрать папку</label>
+        </div>
+        <input id="picker" type="file" multiple style="display:none">
+        <input id="folderPicker" type="file" webkitdirectory directory multiple style="display:none">
+      </div>
       <div class="upload-list" id="uploads"></div>
     </section>
 
@@ -381,7 +415,7 @@ textarea:focus { border-color: var(--accent); }
 
   <section class="card">
     <div class="files-head">
-      <h2 style="margin:0">Файлы в /mnt/game/site</h2>
+      <h2 style="margin:0">Файлы в {{SHARE_DIR}}</h2>
       <button class="btn" style="margin:0;padding:6px 12px;font-size:13px" onclick="refresh()">Обновить</button>
     </div>
     <div id="files"><div class="muted" style="padding:12px 0">Загрузка...</div></div>
@@ -393,6 +427,117 @@ const filesEl = document.getElementById('files');
 const uploadsEl = document.getElementById('uploads');
 const dropzone = document.getElementById('dropzone');
 const picker = document.getElementById('picker');
+const folderPicker = document.getElementById('folderPicker');
+
+const CRC32_TABLE = new Uint32Array(256);
+for (let i = 0; i < 256; i++) {
+  let c = i;
+  for (let k = 0; k < 8; k++) {
+    c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+  }
+  CRC32_TABLE[i] = c;
+}
+
+async function getFileCrc32(file) {
+  let c = 0xffffffff;
+  const reader = file.stream().getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (let i = 0; i < value.length; i++) {
+      c = CRC32_TABLE[(c ^ value[i]) & 0xff] ^ (c >>> 8);
+    }
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(date = new Date()) {
+  const d = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  const t = (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1);
+  return { time: t & 0xffff, date: d & 0xffff };
+}
+
+async function createZipBlob(items, onProgress) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const cdEntries = [];
+  let offset = 0;
+  const { time, date } = dosDateTime();
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    if (onProgress) onProgress(idx + 1, items.length);
+    const cleanPath = item.path.replace(/\\/g, '/');
+    const nameBytes = encoder.encode(cleanPath);
+    const file = item.file;
+    const crc = await getFileCrc32(file);
+    const size = file.size;
+
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const view = new DataView(localHeader.buffer);
+    view.setUint32(0, 0x04034b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(6, 0x0800, true);
+    view.setUint16(8, 0, true);
+    view.setUint16(10, time, true);
+    view.setUint16(12, date, true);
+    view.setUint32(14, crc, true);
+    view.setUint32(18, size, true);
+    view.setUint32(22, size, true);
+    view.setUint16(26, nameBytes.length, true);
+    view.setUint16(28, 0, true);
+    localHeader.set(nameBytes, 30);
+
+    parts.push(localHeader);
+    parts.push(file);
+
+    cdEntries.push({ nameBytes, crc, size, offset, time, date });
+    offset += localHeader.length + size;
+  }
+
+  const cdStartOffset = offset;
+  let cdSize = 0;
+
+  for (const cd of cdEntries) {
+    const header = new Uint8Array(46 + cd.nameBytes.length);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 0x02014b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(6, 20, true);
+    view.setUint16(8, 0x0800, true);
+    view.setUint16(10, 0, true);
+    view.setUint16(12, cd.time, true);
+    view.setUint16(14, cd.date, true);
+    view.setUint32(16, cd.crc, true);
+    view.setUint32(20, cd.size, true);
+    view.setUint32(24, cd.size, true);
+    view.setUint16(28, cd.nameBytes.length, true);
+    view.setUint16(30, 0, true);
+    view.setUint16(32, 0, true);
+    view.setUint16(34, 0, true);
+    view.setUint16(36, 0, true);
+    view.setUint32(38, 0, true);
+    view.setUint32(42, cd.offset, true);
+    header.set(cd.nameBytes, 46);
+
+    parts.push(header);
+    cdSize += header.length;
+  }
+
+  const eocd = new Uint8Array(22);
+  const eocdView = new DataView(eocd.buffer);
+  eocdView.setUint32(0, 0x06054b50, true);
+  eocdView.setUint16(4, 0, true);
+  eocdView.setUint16(6, 0, true);
+  eocdView.setUint16(8, cdEntries.length, true);
+  eocdView.setUint16(10, cdEntries.length, true);
+  eocdView.setUint32(12, cdSize, true);
+  eocdView.setUint32(16, cdStartOffset, true);
+  eocdView.setUint16(20, 0, true);
+  parts.push(eocd);
+
+  return new Blob(parts, { type: 'application/zip' });
+}
 
 async function refresh() {
   try {
@@ -434,28 +579,10 @@ async function refresh() {
   }
 }
 
-function uploadFile(file) {
+function uploadFileWithProgress(blobOrFile, filename, itemEl, barFill, pctSpan) {
   return new Promise(resolve => {
-    const item = document.createElement('div');
-    item.className = 'up-item';
-    const top = document.createElement('div');
-    top.className = 'up-top';
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = file.name;
-    const pctSpan = document.createElement('span');
-    pctSpan.textContent = '0%';
-    top.append(nameSpan, pctSpan);
-
-    const barBg = document.createElement('div');
-    barBg.className = 'bar-bg';
-    const barFill = document.createElement('div');
-    barFill.className = 'bar-fill';
-    barBg.append(barFill);
-    item.append(top, barBg);
-    uploadsEl.prepend(item);
-
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', '/api/upload/' + encodeURIComponent(file.name));
+    xhr.open('PUT', '/api/upload/' + encodeURIComponent(filename));
     xhr.upload.onprogress = e => {
       if (e.lengthComputable) {
         const p = Math.round((e.loaded / e.total) * 100);
@@ -480,8 +607,88 @@ function uploadFile(file) {
       pctSpan.textContent = 'Сбой сети';
       resolve();
     };
-    xhr.send(file);
+    xhr.send(blobOrFile);
   });
+}
+
+function uploadFile(file) {
+  const item = document.createElement('div');
+  item.className = 'up-item';
+  const top = document.createElement('div');
+  top.className = 'up-top';
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = file.name;
+  const pctSpan = document.createElement('span');
+  pctSpan.textContent = '0%';
+  top.append(nameSpan, pctSpan);
+
+  const barBg = document.createElement('div');
+  barBg.className = 'bar-bg';
+  const barFill = document.createElement('div');
+  barFill.className = 'bar-fill';
+  barBg.append(barFill);
+  item.append(top, barBg);
+  uploadsEl.prepend(item);
+
+  return uploadFileWithProgress(file, file.name, item, barFill, pctSpan);
+}
+
+async function packageAndUploadFolder(folderName, items) {
+  const itemEl = document.createElement('div');
+  itemEl.className = 'up-item';
+  const top = document.createElement('div');
+  top.className = 'up-top';
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = '📁 ' + folderName + '.zip (' + items.length + ' файлов)';
+  const pctSpan = document.createElement('span');
+  pctSpan.textContent = 'Подготовка...';
+  top.append(nameSpan, pctSpan);
+
+  const barBg = document.createElement('div');
+  barBg.className = 'bar-bg';
+  const barFill = document.createElement('div');
+  barFill.className = 'bar-fill';
+  barFill.style.width = '10%';
+  barBg.append(barFill);
+  itemEl.append(top, barBg);
+  uploadsEl.prepend(itemEl);
+
+  try {
+    const zipBlob = await createZipBlob(items, (curr, total) => {
+      const p = Math.round((curr / total) * 35);
+      barFill.style.width = (10 + p) + '%';
+      pctSpan.textContent = 'Архивация ' + curr + '/' + total;
+    });
+
+    pctSpan.textContent = 'Отправка...';
+    await uploadFileWithProgress(zipBlob, folderName + '.zip', itemEl, barFill, pctSpan);
+  } catch (err) {
+    barFill.style.background = 'var(--danger)';
+    pctSpan.textContent = 'Ошибка';
+    console.error(err);
+  }
+}
+
+async function readAllDirectoryFiles(dirEntry, prefix = '') {
+  const reader = dirEntry.createReader();
+  const result = [];
+  const readBatch = () => new Promise((resolve, reject) => {
+    reader.readEntries(resolve, reject);
+  });
+  while (true) {
+    const batch = await readBatch();
+    if (!batch || batch.length === 0) break;
+    for (const child of batch) {
+      if (child.isFile) {
+        const file = await new Promise((res, rej) => child.file(res, rej));
+        result.push({ path: prefix + child.name, file });
+      } else if (child.isDirectory) {
+        const sub = await readAllDirectoryFiles(child, prefix + child.name + '/');
+        result.push(...sub);
+      }
+    }
+  }
+  return result;
 }
 
 async function handleFileList(list) {
@@ -495,12 +702,56 @@ picker.addEventListener('change', e => {
   e.target.value = '';
 });
 
+folderPicker.addEventListener('change', async e => {
+  const files = Array.from(e.target.files);
+  e.target.value = '';
+  if (!files.length) return;
+  const folderMap = new Map();
+  for (const f of files) {
+    const rel = f.webkitRelativePath || f.name;
+    const parts = rel.split('/');
+    const rootName = parts[0] || 'folder';
+    if (!folderMap.has(rootName)) folderMap.set(rootName, []);
+    folderMap.get(rootName).push({ path: rel, file: f });
+  }
+  for (const [folderName, items] of folderMap) {
+    await packageAndUploadFolder(folderName, items);
+  }
+});
+
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', e => {
+dropzone.addEventListener('drop', async e => {
   e.preventDefault();
   dropzone.classList.remove('dragover');
-  if (e.dataTransfer.files.length) handleFileList(e.dataTransfer.files);
+  const items = e.dataTransfer.items;
+  if (!items || !items.length) {
+    if (e.dataTransfer.files.length) handleFileList(e.dataTransfer.files);
+    return;
+  }
+
+  const entries = [];
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+    if (entry) entries.push(entry);
+  }
+
+  if (!entries.length) {
+    handleFileList(e.dataTransfer.files);
+    return;
+  }
+
+  for (const entry of entries) {
+    if (entry.isDirectory) {
+      const files = await readAllDirectoryFiles(entry, entry.name + '/');
+      if (files.length) {
+        await packageAndUploadFolder(entry.name, files);
+      }
+    } else if (entry.isFile) {
+      const file = await new Promise((res, rej) => entry.file(res, rej));
+      await uploadFile(file);
+    }
+  }
 });
 
 document.getElementById('sendText').addEventListener('click', async () => {
