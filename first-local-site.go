@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,6 +15,9 @@ import (
 	"strings"
 	"time"
 )
+
+//go:embed logo.png
+var logoPNG []byte
 
 var (
 	portFlag = flag.String("port", ":8000", "Порт сервера (например, :8000)")
@@ -325,6 +329,11 @@ func main() {
 	http.HandleFunc("/api/upload/", handleUpload)
 	http.HandleFunc("/api/text", handleText)
 	http.HandleFunc("/download/", handleDownload)
+	http.HandleFunc("/logo.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Write(logoPNG)
+	})
 
 	fmt.Printf("Сервер запущен. Порт: %s\nПапка: %s (TTL: %v)\nОткройте в браузере:\n", Port, ShareDir, FileTTL)
 	for _, ip := range localIPs() {
@@ -341,61 +350,587 @@ const pageHTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LAN Drop — {{SHARE_DIR}}</title>
+<title>LAN Drop — Быстрый обмен</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root { --bg: #0b0f19; --card: #131b2e; --border: #23304d; --accent: #3b82f6; --accent-hover: #2563eb; --text: #f1f5f9; --muted: #94a3b8; --success: #10b981; --danger: #ef4444; }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, sans-serif; }
-main { max-width: 860px; margin: 28px auto; padding: 0 16px; }
-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 20px; gap: 8px; }
-h1 { font-size: 26px; margin: 0; font-weight: 700; letter-spacing: -0.5px; }
-.path { font-family: monospace; background: #1e293b; color: #38bdf8; padding: 4px 10px; border-radius: 8px; font-size: 13px; word-break: break-all; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-@media(max-width: 680px) { .grid { grid-template-columns: 1fr; } }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
-h2 { font-size: 17px; margin: 0 0 12px; font-weight: 600; }
-.dropzone { border: 2px dashed #334155; border-radius: 12px; padding: 24px 16px; text-align: center; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 155px; }
-.dropzone.dragover, .dropzone:hover { border-color: var(--accent); background: rgba(59,130,246,0.06); }
-.drop-title { font-weight: 600; color: var(--accent); margin-bottom: 4px; font-size: 16px; }
-.muted { color: var(--muted); font-size: 13px; }
-.picker-btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
-.btn-picker { background: #1e293b; color: var(--text); border: 1px solid var(--border); padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.15s; user-select: none; }
-.btn-picker:hover { background: var(--accent); color: white; border-color: var(--accent); }
-textarea { width: 100%; height: 104px; background: #0f1626; color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font: inherit; resize: none; outline: none; }
-textarea:focus { border-color: var(--accent); }
-.btn { background: var(--accent); color: white; border: 0; border-radius: 10px; padding: 10px 18px; font: 600 14px system-ui; cursor: pointer; transition: 0.15s; margin-top: 10px; display: inline-flex; align-items: center; gap: 8px; }
-.btn:hover { background: var(--accent-hover); }
-.upload-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.up-item { background: #0f1626; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
-.up-top { display: flex; justify-content: space-between; margin-bottom: 6px; word-break: break-all; gap: 8px; }
-.bar-bg { height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden; }
-.bar-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s; }
-.files-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
-.row:first-child { border-top: 0; }
-.fname { color: var(--text); text-decoration: none; font-weight: 500; word-break: break-all; }
-.fname:hover { color: var(--accent); }
-.actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.dl-btn { background: #1e293b; color: var(--text); text-decoration: none; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; transition: 0.15s; }
-.dl-btn:hover { background: var(--accent); color: white; }
+:root {
+  --bg: #0D0D0F;
+  --bg-alt: #121215;
+  --surface: #18181B;
+  --surface-hover: #1F1F23;
+  --surface-active: #27272A;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.16);
+  --border-focus: rgba(255, 255, 255, 0.3);
+  --text: #F4F4F5;
+  --text-muted: #A1A1AA;
+  --text-dim: #71717A;
+  --white: #FFFFFF;
+  --btn-primary-bg: #F4F4F5;
+  --btn-primary-text: #0D0D0F;
+  --btn-primary-hover: #FFFFFF;
+  --btn-secondary-bg: rgba(255, 255, 255, 0.05);
+  --btn-secondary-hover: rgba(255, 255, 255, 0.09);
+  --success: #10B981;
+  --success-bg: rgba(16, 185, 129, 0.1);
+  --danger: #EF4444;
+  --danger-bg: rgba(239, 68, 68, 0.1);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: 32px 16px 64px;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  display: block;
+  border-radius: var(--radius-sm);
+  filter: drop-shadow(0 2px 8px rgba(255, 255, 255, 0.12));
+  transition: transform 0.2s var(--ease);
+}
+
+.brand:hover .brand-logo {
+  transform: scale(1.08);
+}
+
+.brand h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--white);
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.status-dot-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--success);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--success);
+}
+
+.path-pill {
+  font-family: var(--font-mono);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  max-width: 380px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ttl-pill {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* ── Grid Layout ── */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 740px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.2s var(--ease);
+}
+
+.card:hover {
+  border-color: var(--border-hover);
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  letter-spacing: -0.01em;
+}
+
+/* ── Dropzone ── */
+.dropzone {
+  border: 1px dashed var(--border-hover);
+  background: var(--bg-alt);
+  border-radius: var(--radius-md);
+  padding: 28px 18px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 165px;
+  position: relative;
+}
+
+.dropzone.dragover, .dropzone:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.drop-icon {
+  margin-bottom: 10px;
+  color: var(--text-dim);
+  transition: color 0.2s, transform 0.2s var(--ease);
+}
+
+.dropzone:hover .drop-icon, .dropzone.dragover .drop-icon {
+  color: var(--white);
+  transform: translateY(-2px);
+}
+
+.drop-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.drop-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+
+.picker-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+  user-select: none;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+
+.btn-primary:hover {
+  background: var(--btn-primary-hover);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+.btn-secondary {
+  background: var(--btn-secondary-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--btn-secondary-hover);
+  border-color: var(--border-hover);
+  color: var(--white);
+}
+
+.btn-sm {
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+/* ── Textarea ── */
+.textarea-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+
+textarea {
+  width: 100%;
+  height: 115px;
+  background: var(--bg-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+textarea:focus {
+  border-color: var(--border-focus);
+  background: #141418;
+}
+
+textarea::placeholder {
+  color: var(--text-dim);
+}
+
+.note-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kbd-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.status-msg {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.status-msg.success { color: var(--success); }
+.status-msg.error { color: var(--danger); }
+
+/* ── Upload List ── */
+.upload-list {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.up-item {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.up-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.up-name {
+  font-weight: 500;
+  color: var(--text);
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.up-pct {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.bar-bg {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--text);
+  width: 0%;
+  border-radius: 2px;
+  transition: width 0.12s linear, background-color 0.2s;
+}
+
+/* ── Files Section ── */
+.files-card {
+  margin-top: 4px;
+}
+
+.files-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.files-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 2px 7px;
+  border-radius: 12px;
+}
+
+.files-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.search-input {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 6px 10px;
+  outline: none;
+  width: 190px;
+  transition: all 0.2s;
+}
+
+.search-input:focus {
+  border-color: var(--border-focus);
+  width: 230px;
+}
+
+.search-input::placeholder {
+  color: var(--text-dim);
+}
+
+/* ── File Row ── */
+.files-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.15s var(--ease);
+  border-radius: var(--radius-sm);
+}
+
+.file-row:last-child {
+  border-bottom: none;
+}
+
+.file-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-icon {
+  font-size: 16px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.file-details {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fname {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 13px;
+  word-break: break-all;
+  transition: color 0.15s;
+}
+
+.fname:hover {
+  color: var(--white);
+  text-decoration: underline;
+}
+
+.fmeta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.factions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.empty-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+  opacity: 0.4;
+}
 </style>
 </head>
 <body>
+
 <main>
   <header>
-    <h1>Быстрый обмен</h1>
-    <span class="path">{{SHARE_DIR}} · автоудаление через 1ч</span>
+    <div class="brand">
+      <img src="/logo.png" alt="LAN Drop" class="brand-logo" width="30" height="30">
+      <h1>LAN Drop</h1>
+    </div>
+    <div class="header-meta">
+      <div class="status-dot-wrap">
+        <span class="status-dot"></span>
+        <span>Онлайн</span>
+      </div>
+      <span class="path-pill" title="{{SHARE_DIR}}">{{SHARE_DIR}}</span>
+      <span class="ttl-pill">автоудаление через 1ч</span>
+    </div>
   </header>
 
   <div class="grid">
+    <!-- Card 1: Files / Folders Dropzone -->
     <section class="card">
-      <h2>Отправить файлы или папки</h2>
+      <div class="card-title">
+        <span>Отправить файлы</span>
+      </div>
       <div class="dropzone" id="dropzone">
-        <span class="drop-title">Перетащите файлы или папки сюда</span>
-        <span class="muted">Папки автоматически пакуются в .zip · Потоковая загрузка</span>
+        <div class="drop-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+        </div>
+        <div class="drop-title">Перетащите файлы или папки сюда</div>
+        <div class="drop-sub">Папки пакуются в .zip на лету · Потоковая передача</div>
         <div class="picker-btns">
-          <label class="btn-picker" for="picker">Выбрать файлы</label>
-          <label class="btn-picker" for="folderPicker">Выбрать папку</label>
+          <label class="btn btn-secondary btn-sm" for="picker">Выбрать файлы</label>
+          <label class="btn btn-secondary btn-sm" for="folderPicker">Выбрать папку</label>
         </div>
         <input id="picker" type="file" multiple style="display:none">
         <input id="folderPicker" type="file" webkitdirectory directory multiple style="display:none">
@@ -403,22 +938,46 @@ textarea:focus { border-color: var(--accent); }
       <div class="upload-list" id="uploads"></div>
     </section>
 
+    <!-- Card 2: Quick Note / Text -->
     <section class="card">
-      <h2>Отправить текст / ссылку</h2>
-      <textarea id="text" placeholder="Вставьте текст или заметку..."></textarea>
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <button class="btn" id="sendText">Сохранить .txt</button>
-        <span class="muted" id="textStatus"></span>
+      <div class="textarea-wrap">
+        <div class="card-title">
+          <span>Быстрая заметка / ссылка</span>
+        </div>
+        <textarea id="text" placeholder="Вставьте текст, ссылку или код..."></textarea>
+        <div class="note-actions">
+          <span class="kbd-hint">Ctrl + Enter для отправки</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="status-msg" id="textStatus"></span>
+            <button class="btn btn-primary btn-sm" id="sendText">Сохранить .txt</button>
+          </div>
+        </div>
       </div>
     </section>
   </div>
 
-  <section class="card">
-    <div class="files-head">
-      <h2 style="margin:0">Файлы в {{SHARE_DIR}}</h2>
-      <button class="btn" style="margin:0;padding:6px 12px;font-size:13px" onclick="refresh()">Обновить</button>
+  <!-- Card 3: Files in share directory -->
+  <section class="card files-card">
+    <div class="files-header">
+      <div class="files-title-group">
+        <span class="card-title" style="margin:0">Хранилище</span>
+        <span class="badge" id="fileCount">0</span>
+      </div>
+      <div class="files-controls">
+        <input type="text" id="searchInput" class="search-input" placeholder="Поиск по имени...">
+        <button class="btn btn-secondary btn-sm" id="refreshBtn" onclick="refresh()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          Обновить
+        </button>
+      </div>
     </div>
-    <div id="files"><div class="muted" style="padding:12px 0">Загрузка...</div></div>
+    <div class="files-list" id="files">
+      <div class="empty-state">Загрузка файлов...</div>
+    </div>
   </section>
 </main>
 
@@ -428,7 +987,12 @@ const uploadsEl = document.getElementById('uploads');
 const dropzone = document.getElementById('dropzone');
 const picker = document.getElementById('picker');
 const folderPicker = document.getElementById('folderPicker');
+const fileCountEl = document.getElementById('fileCount');
+const searchInput = document.getElementById('searchInput');
 
+let cachedFiles = [];
+
+// CRC32 table for client-side ZIP packaging
 const CRC32_TABLE = new Uint32Array(256);
 for (let i = 0; i < 256; i++) {
   let c = i;
@@ -539,43 +1103,109 @@ async function createZipBlob(items, onProgress) {
   return new Blob(parts, { type: 'application/zip' });
 }
 
+function getFileIcon(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  if (['zip', 'tar', 'gz', '7z', 'rar'].includes(ext)) return '📦';
+  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return '🖼️';
+  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return '🎬';
+  if (['mp3', 'wav', 'flac', 'ogg'].includes(ext)) return '🎵';
+  if (['txt', 'md', 'log'].includes(ext)) return '📄';
+  if (['pdf'].includes(ext)) return '📑';
+  if (['go', 'js', 'ts', 'py', 'json', 'html', 'css', 'sh'].includes(ext)) return '⚙️';
+  return '📁';
+}
+
+function renderFileList(items) {
+  filesEl.replaceChildren();
+  if (!items || !items.length) {
+    const q = searchInput.value.trim();
+    filesEl.innerHTML = '<div class="empty-state"><div class="empty-icon"><img src="/logo.png" width="36" height="36" style="opacity:0.3;filter:grayscale(40%);vertical-align:middle" alt=""></div>' +
+      (q ? 'Ничего не найдено по запросу "' + escapeHtml(q) + '"' : 'Папка пуста. Отправьте файл или заметку выше.') +
+      '</div>';
+    return;
+  }
+
+  for (const f of items) {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+
+    const info = document.createElement('div');
+    info.className = 'file-info';
+
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    icon.textContent = getFileIcon(f.name);
+
+    const details = document.createElement('div');
+    details.className = 'file-details';
+
+    const a = document.createElement('a');
+    a.className = 'fname';
+    a.href = '/download/' + encodeURIComponent(f.name);
+    a.target = '_blank';
+    a.textContent = f.name;
+
+    const meta = document.createElement('div');
+    meta.className = 'fmeta';
+    meta.textContent = f.size + '  ·  ' + f.time;
+
+    details.append(a, meta);
+    info.append(icon, details);
+
+    const actions = document.createElement('div');
+    actions.className = 'factions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn btn-secondary btn-sm';
+    copyBtn.textContent = 'Копировать';
+    copyBtn.title = 'Скопировать ссылку на файл';
+    copyBtn.onclick = () => {
+      const url = window.location.origin + '/download/' + encodeURIComponent(f.name);
+      navigator.clipboard.writeText(url).then(() => {
+        copyBtn.textContent = 'Скопировано!';
+        setTimeout(() => copyBtn.textContent = 'Копировать', 1600);
+      });
+    };
+
+    const dl = document.createElement('a');
+    dl.className = 'btn btn-primary btn-sm';
+    dl.href = '/download/' + encodeURIComponent(f.name) + '?dl=1';
+    dl.textContent = 'Скачать';
+
+    actions.append(copyBtn, dl);
+    row.append(info, actions);
+    filesEl.append(row);
+  }
+}
+
+function escapeHtml(str) {
+  const p = document.createElement('p');
+  p.textContent = str;
+  return p.innerHTML;
+}
+
+function filterFiles() {
+  const query = searchInput.value.trim().toLowerCase();
+  if (!query) {
+    renderFileList(cachedFiles);
+    return;
+  }
+  const filtered = cachedFiles.filter(f => f.name.toLowerCase().includes(query));
+  renderFileList(filtered);
+}
+
+searchInput.addEventListener('input', filterFiles);
+
 async function refresh() {
   try {
     const r = await fetch('/api/files');
     if (!r.ok) throw Error();
     const data = await r.json();
-    filesEl.replaceChildren();
-    if (!data || !data.length) {
-      filesEl.innerHTML = '<div class="muted" style="padding:12px 0">Папка пуста.</div>';
-      return;
-    }
-    for (const f of data) {
-      const row = document.createElement('div');
-      row.className = 'row';
-      const left = document.createElement('div');
-      const a = document.createElement('a');
-      a.className = 'fname';
-      a.href = '/download/' + encodeURIComponent(f.name);
-      a.target = '_blank';
-      a.textContent = f.name;
-      const meta = document.createElement('div');
-      meta.className = 'muted';
-      meta.textContent = f.size + ' · ' + f.time;
-      left.append(a, meta);
-
-      const actions = document.createElement('div');
-      actions.className = 'actions';
-      const dl = document.createElement('a');
-      dl.className = 'dl-btn';
-      dl.href = '/download/' + encodeURIComponent(f.name) + '?dl=1';
-      dl.textContent = 'Скачать';
-      actions.append(dl);
-
-      row.append(left, actions);
-      filesEl.append(row);
-    }
+    cachedFiles = data || [];
+    fileCountEl.textContent = cachedFiles.length;
+    filterFiles();
   } catch {
-    filesEl.innerHTML = '<div class="muted" style="padding:12px 0;color:var(--danger)">Ошибка загрузки списка.</div>';
+    filesEl.innerHTML = '<div class="empty-state" style="color:var(--danger)">Ошибка при загрузке списка файлов.</div>';
   }
 }
 
@@ -595,16 +1225,20 @@ function uploadFileWithProgress(blobOrFile, filename, itemEl, barFill, pctSpan) 
         barFill.style.width = '100%';
         barFill.style.background = 'var(--success)';
         pctSpan.textContent = 'Готово';
+        pctSpan.style.color = 'var(--success)';
+        setTimeout(() => itemEl.remove(), 4000);
         refresh();
       } else {
         barFill.style.background = 'var(--danger)';
         pctSpan.textContent = 'Ошибка';
+        pctSpan.style.color = 'var(--danger)';
       }
       resolve();
     };
     xhr.onerror = () => {
       barFill.style.background = 'var(--danger)';
       pctSpan.textContent = 'Сбой сети';
+      pctSpan.style.color = 'var(--danger)';
       resolve();
     };
     xhr.send(blobOrFile);
@@ -617,8 +1251,10 @@ function uploadFile(file) {
   const top = document.createElement('div');
   top.className = 'up-top';
   const nameSpan = document.createElement('span');
-  nameSpan.textContent = file.name;
+  nameSpan.className = 'up-name';
+  nameSpan.textContent = '📄 ' + file.name;
   const pctSpan = document.createElement('span');
+  pctSpan.className = 'up-pct';
   pctSpan.textContent = '0%';
   top.append(nameSpan, pctSpan);
 
@@ -639,8 +1275,10 @@ async function packageAndUploadFolder(folderName, items) {
   const top = document.createElement('div');
   top.className = 'up-top';
   const nameSpan = document.createElement('span');
-  nameSpan.textContent = '📁 ' + folderName + '.zip (' + items.length + ' файлов)';
+  nameSpan.className = 'up-name';
+  nameSpan.textContent = '📦 ' + folderName + '.zip (' + items.length + ' файлов)';
   const pctSpan = document.createElement('span');
+  pctSpan.className = 'up-pct';
   pctSpan.textContent = 'Подготовка...';
   top.append(nameSpan, pctSpan);
 
@@ -665,6 +1303,7 @@ async function packageAndUploadFolder(folderName, items) {
   } catch (err) {
     barFill.style.background = 'var(--danger)';
     pctSpan.textContent = 'Ошибка';
+    pctSpan.style.color = 'var(--danger)';
     console.error(err);
   }
 }
@@ -719,8 +1358,13 @@ folderPicker.addEventListener('change', async e => {
   }
 });
 
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropzone.classList.add('dragover');
+});
+
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+
 dropzone.addEventListener('drop', async e => {
   e.preventDefault();
   dropzone.classList.remove('dragover');
@@ -754,20 +1398,35 @@ dropzone.addEventListener('drop', async e => {
   }
 });
 
-document.getElementById('sendText').addEventListener('click', async () => {
+async function sendNote() {
   const box = document.getElementById('text');
   const status = document.getElementById('textStatus');
   if (!box.value.trim()) return;
   status.textContent = 'Сохранение...';
+  status.className = 'status-msg';
   try {
     const r = await fetch('/api/text', { method: 'POST', body: box.value });
     if (!r.ok) throw Error();
     box.value = '';
     status.textContent = 'Сохранено!';
-    setTimeout(() => status.textContent = '', 2500);
+    status.className = 'status-msg success';
+    setTimeout(() => {
+      status.textContent = '';
+      status.className = 'status-msg';
+    }, 2500);
     refresh();
   } catch {
-    status.textContent = 'Ошибка';
+    status.textContent = 'Ошибка сохранения';
+    status.className = 'status-msg error';
+  }
+}
+
+document.getElementById('sendText').addEventListener('click', sendNote);
+
+document.getElementById('text').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    sendNote();
   }
 });
 
